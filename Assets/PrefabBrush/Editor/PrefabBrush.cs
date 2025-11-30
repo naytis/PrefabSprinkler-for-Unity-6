@@ -1,12 +1,14 @@
 using UnityEngine;
 using UnityEditor;
+using System.Collections.Generic;
 
 public class PrefabBrush : EditorWindow
 {
     float spawnRadius = 1.0f;
     float objectDensity = 0.5f; // Объединенный параметр плотности (0 - редко, 1 - густо)
-    GameObject prefabToSpawn;
+    List<GameObject> prefabsToSpawn = new List<GameObject>(); // Список префабов для размещения
     bool brushMode = false; // Режим кисти
+    bool eraserMode = false; // Режим стирания
     bool isMouseDown = false; // Отслеживание зажатия ЛКМ
     float lastSpawnTime = 0f; // Время последнего спавна
     float spawnInterval = 0.1f; // Интервал между спавнами при зажатии ЛКМ
@@ -16,9 +18,13 @@ public class PrefabBrush : EditorWindow
     // Типы кисти: 0 = Single, 1 = Circle, 2 = Square, 3 = Line
     int currentBrushShape = 1; // По умолчанию круглая кисть
     
+    // Для отображения списка префабов
+    Vector2 scrollPosition;
+    
     // Иконки для кнопок
     private GUIContent undoIcon;
     private GUIContent brushIcon;
+    private GUIContent eraserIcon;
     private GUIContent cursorIcon;
     private GUIContent singleIcon;
     private GUIContent circleIcon;
@@ -48,31 +54,17 @@ public class PrefabBrush : EditorWindow
         // Загружаем встроенные иконки Unity или пользовательские из папки
         Texture2D undoTexture = EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_undo.png") as Texture2D;
         Texture2D brushTexture = EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_brush.png") as Texture2D;
+        Texture2D eraserTexture = EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_eraser.png") as Texture2D;
         Texture2D cursorTexture = EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_cursor.png") as Texture2D;
         Texture2D singleTexture = EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_single.png") as Texture2D;
         Texture2D circleTexture = EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_circle.png") as Texture2D;
         Texture2D squareTexture = EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_square.png") as Texture2D;
         Texture2D lineTexture = EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_line.png") as Texture2D;
         
-        // Если иконки не найдены, используем встроенные иконки Unity
-        if (undoTexture == null)
-            undoTexture = EditorGUIUtility.IconContent("UndoHistory").image as Texture2D;
-        if (brushTexture == null)
-            brushTexture = EditorGUIUtility.IconContent("EditCollider").image as Texture2D;
-        if (cursorTexture == null)
-            cursorTexture = EditorGUIUtility.IconContent("ViewToolMove").image as Texture2D;
-        if (singleTexture == null)
-            singleTexture = EditorGUIUtility.IconContent("Transform Icon").image as Texture2D;
-        if (circleTexture == null)
-            circleTexture = EditorGUIUtility.IconContent("SphereCollider Icon").image as Texture2D;
-        if (squareTexture == null)
-            squareTexture = EditorGUIUtility.IconContent("BoxCollider Icon").image as Texture2D;
-        if (lineTexture == null)
-            lineTexture = EditorGUIUtility.IconContent("AvatarPivot").image as Texture2D;
 
-            
-        undoIcon = new GUIContent(undoTexture, "Undo (Ctrl+Z)");
+        undoIcon = new GUIContent(undoTexture, "Undo");
         brushIcon = new GUIContent(brushTexture, "Brush Mode");
+        eraserIcon = new GUIContent(eraserTexture, "Eraser Mode");
         cursorIcon = new GUIContent(cursorTexture, "Normal Cursor");
         singleIcon = new GUIContent(singleTexture, "Single Object");
         circleIcon = new GUIContent(circleTexture, "Circle Brush");
@@ -98,15 +90,27 @@ public class PrefabBrush : EditorWindow
         if (GUILayout.Button(brushIcon, GUILayout.Width(30), GUILayout.Height(30)))
         {
             brushMode = !brushMode;
+            eraserMode = false;
+            SceneView.RepaintAll();
+        }
+        GUI.backgroundColor = Color.white;
+        
+        // Кнопка режима ластика
+        GUI.backgroundColor = eraserMode ? Color.gray : Color.white;
+        if (GUILayout.Button(eraserIcon, GUILayout.Width(30), GUILayout.Height(30)))
+        {
+            eraserMode = !eraserMode;
+            brushMode = false;
             SceneView.RepaintAll();
         }
         GUI.backgroundColor = Color.white;
         
         // Кнопка выхода из режима кисти (обычный курсор)
-        GUI.backgroundColor = !brushMode ? Color.gray : Color.white;
+        GUI.backgroundColor = (!brushMode && !eraserMode) ? Color.gray : Color.white;
         if (GUILayout.Button(cursorIcon, GUILayout.Width(30), GUILayout.Height(30)))
         {
             brushMode = false;
+            eraserMode = false;
             isMouseDown = false; // Сбрасываем состояние мыши
             SceneView.RepaintAll();
         }
@@ -117,7 +121,7 @@ public class PrefabBrush : EditorWindow
         
         EditorGUILayout.Space(10);
         
-        GUILayout.Label("Brush Mode", EditorStyles.boldLabel);
+        GUILayout.Label(eraserMode ? "Eraser Mode" : "Brush Mode", EditorStyles.boldLabel);
         
         EditorGUILayout.Space(5);
         
@@ -161,26 +165,63 @@ public class PrefabBrush : EditorWindow
         
         EditorGUILayout.Space(10);
         
-        GUILayout.Label("Brush Settings", EditorStyles.boldLabel);
+        // Список префабов с возможностью добавления/удаления
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.LabelField("Prefabs to Spawn", EditorStyles.boldLabel);
         
-        prefabToSpawn = (GameObject)EditorGUILayout.ObjectField("Prefab to Spawn", prefabToSpawn, typeof(GameObject), false);
+        scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition, GUILayout.MaxHeight(100));
         
-        // Чекбокс случайного отзеркаливания
-        randomFlipY = EditorGUILayout.Toggle("Random Mirroring", randomFlipY);
+        for (int i = 0; i < prefabsToSpawn.Count; i++)
+        {
+            EditorGUILayout.BeginHorizontal();
+            prefabsToSpawn[i] = (GameObject)EditorGUILayout.ObjectField(prefabsToSpawn[i], typeof(GameObject), false);
+            if (GUILayout.Button("X", GUILayout.Width(25)))
+            {
+                prefabsToSpawn.RemoveAt(i);
+                EditorGUILayout.EndHorizontal(); // Закрываем horizontal перед break
+                break;
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+        
+        EditorGUILayout.EndScrollView();
+        
+        EditorGUILayout.BeginHorizontal();
+        if (GUILayout.Button("+ Add Prefab"))
+        {
+            prefabsToSpawn.Add(null);
+        }
+        if (GUILayout.Button("Clear All") && prefabsToSpawn.Count > 0)
+        {
+            prefabsToSpawn.Clear();
+        }
+        EditorGUILayout.EndHorizontal();
+        
+        EditorGUILayout.EndVertical();
+        
+        EditorGUILayout.Space(10);
+        
+        GUILayout.Label(eraserMode ? "Eraser Settings" : "Brush Settings", EditorStyles.boldLabel);
+        
+        // Чекбокс случайного отзеркаливания только для режима кисти
+        if (!eraserMode)
+        {
+            randomFlipY = EditorGUILayout.Toggle("Random Mirroring", randomFlipY);
+        }
         
         // Для линейной кисти показываем длину линии вместо радиуса
         if (currentBrushShape == 3)
         {
-            spawnRadius = EditorGUILayout.Slider("Line Length", spawnRadius, 0.5f, 10f);
+            spawnRadius = EditorGUILayout.Slider(eraserMode ? "Eraser Length" : "Line Length", spawnRadius, 0.5f, 10f);
             lineAngle = EditorGUILayout.Slider("Line Angle", lineAngle, 0f, 180f);
         }
         else if (currentBrushShape != 0) // Показываем размер кисти для круга и квадрата
         {
-            spawnRadius = EditorGUILayout.Slider("Brush Size", spawnRadius, 0.5f, 10f);
+            spawnRadius = EditorGUILayout.Slider(eraserMode ? "Eraser Size" : "Brush Size", spawnRadius, 0.5f, 10f);
         }
         
-        // Показываем плотность для всех режимов кроме одиночного
-        if (currentBrushShape != 0)
+        // Показываем плотность только для режима кисти и всех режимов кроме одиночного
+        if (!eraserMode && currentBrushShape != 0)
         {
             objectDensity = EditorGUILayout.Slider("Object Density", objectDensity, 0.1f, 1f);
         }
@@ -191,13 +232,21 @@ public class PrefabBrush : EditorWindow
         }
         
         // Информационное сообщение о режиме кисти в нижней части окна
-        if (brushMode)
+        if (brushMode || eraserMode)
         {
             EditorGUILayout.Space(10);
             string shapeText = currentBrushShape == 0 ? "Single Object" : 
                              currentBrushShape == 1 ? "Circle" : 
                              currentBrushShape == 2 ? "Square" : "Line";
-            EditorGUILayout.HelpBox($"Brush Mode Active ({shapeText}): Click and hold on the scene to spawn prefabs", MessageType.Info);
+            
+            if (eraserMode)
+            {
+                EditorGUILayout.HelpBox($"Eraser Mode Active ({shapeText}): Click and hold on the scene to erase prefabs", MessageType.Info);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox($"Brush Mode Active ({shapeText}): Click and hold on the scene to spawn prefabs", MessageType.Info);
+            }
         }
 
         // Обработка горячей клавиши Ctrl+Z
@@ -211,7 +260,7 @@ public class PrefabBrush : EditorWindow
 
     private void OnSceneGUI(SceneView sceneView)
     {
-        if (!brushMode) return;
+        if (!brushMode && !eraserMode) return;
 
         Event e = Event.current;
         
@@ -240,6 +289,10 @@ public class PrefabBrush : EditorWindow
             
             if (hasPoint)
             {
+                // Используем красный цвет для ластика, зелёный для кисти
+                Color mainColor = eraserMode ? Color.red : Color.green;
+                Color fillColor = eraserMode ? new Color(1, 0, 0, 0.3f) : new Color(0, 1, 0, 0.3f);
+                
                 if (currentBrushShape == 0) // Single
                 {
                     // Отображаем перекрестье для одиночного объекта
@@ -253,8 +306,8 @@ public class PrefabBrush : EditorWindow
                     Vector3 vLineStart = point + new Vector3(0, -crosshairSize, 0);
                     Vector3 vLineEnd = point + new Vector3(0, crosshairSize, 0);
                     
-                    // Рисуем перекрестье зелёным цветом
-                    Handles.color = Color.green;
+                    // Рисуем перекрестье
+                    Handles.color = mainColor;
                     Handles.DrawLine(hLineStart, hLineEnd, 2f);
                     Handles.DrawLine(vLineStart, vLineEnd, 2f);
                     
@@ -264,9 +317,9 @@ public class PrefabBrush : EditorWindow
                 else if (currentBrushShape == 1) // Circle
                 {
                     // Отображаем круг с заливкой и контуром
-                    Handles.color = new Color(0, 1, 0, 0.3f);
+                    Handles.color = fillColor;
                     Handles.DrawSolidDisc(point, Vector3.forward, spawnRadius);
-                    Handles.color = Color.green;
+                    Handles.color = mainColor;
                     Handles.DrawWireDisc(point, Vector3.forward, spawnRadius);
                 }
                 else if (currentBrushShape == 2) // Square
@@ -281,8 +334,8 @@ public class PrefabBrush : EditorWindow
                     
                     Handles.DrawSolidRectangleWithOutline(
                         squarePoints,
-                        new Color(0, 1, 0, 0.3f),
-                        Color.green
+                        fillColor,
+                        mainColor
                     );
                 }
                 else // Line
@@ -307,11 +360,11 @@ public class PrefabBrush : EditorWindow
                     lineRectPoints[3] = lineStart + perpendicular;
                     lineRectPoints[4] = lineRectPoints[0];
                     
-                    // Рисуем с заливкой и контуром, как у квадрата
+                    // Рисуем с заливкой и контуром
                     Handles.DrawSolidRectangleWithOutline(
                         lineRectPoints,
-                        new Color(0, 1, 0, 0.3f),
-                        Color.green
+                        fillColor,
+                        mainColor
                     );
                 }
             }
@@ -340,7 +393,14 @@ public class PrefabBrush : EditorWindow
                 }
             }
 
-            SpawnPrefabs(spawnCenter);
+            if (eraserMode)
+            {
+                EraseObjects(spawnCenter);
+            }
+            else
+            {
+                SpawnPrefabs(spawnCenter);
+            }
             e.Use();
         }
         
@@ -376,7 +436,14 @@ public class PrefabBrush : EditorWindow
                     }
                 }
 
-                SpawnPrefabs(spawnCenter);
+                if (eraserMode)
+                {
+                    EraseObjects(spawnCenter);
+                }
+                else
+                {
+                    SpawnPrefabs(spawnCenter);
+                }
                 lastSpawnTime = currentTime;
             }
             
@@ -388,27 +455,152 @@ public class PrefabBrush : EditorWindow
         SceneView.RepaintAll();
     }
 
+    private void EraseObjects(Vector3 center)
+    {
+        if (prefabsToSpawn.Count == 0 || prefabsToSpawn.TrueForAll(p => p == null))
+        {
+            Debug.LogWarning("Please add at least one prefab to erase.");
+            return;
+        }
+        
+        // Получаем список только непустых префабов
+        List<GameObject> validPrefabs = prefabsToSpawn.FindAll(p => p != null);
+        if (validPrefabs.Count == 0)
+        {
+            Debug.LogWarning("Please assign prefabs in the list.");
+            return;
+        }
+        
+        // Находим все объекты на сцене
+        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+        List<GameObject> objectsToDelete = new List<GameObject>();
+        
+        foreach (GameObject obj in allObjects)
+        {
+            // Проверяем, соответствует ли имя объекта имени любого из префабов
+            bool matchesPrefab = false;
+            foreach (GameObject prefab in validPrefabs)
+            {
+                if (prefab != null && (obj.name == prefab.name || obj.name.StartsWith(prefab.name)))
+                {
+                    matchesPrefab = true;
+                    break;
+                }
+            }
+            
+            if (!matchesPrefab)
+                continue;
+            
+            // Проверяем, находится ли объект в области действия ластика
+            bool inArea = false;
+            
+            if (currentBrushShape == 0) // Single - удаляем ближайший объект
+            {
+                float distance = Vector3.Distance(obj.transform.position, center);
+                if (distance < 0.5f) // Небольшой радиус для точного удаления
+                {
+                    objectsToDelete.Add(obj);
+                }
+            }
+            else if (currentBrushShape == 1) // Circle
+            {
+                float distance = Vector3.Distance(obj.transform.position, center);
+                if (distance <= spawnRadius)
+                {
+                    inArea = true;
+                }
+            }
+            else if (currentBrushShape == 2) // Square
+            {
+                Vector3 localPos = obj.transform.position - center;
+                if (Mathf.Abs(localPos.x) <= spawnRadius && Mathf.Abs(localPos.y) <= spawnRadius)
+                {
+                    inArea = true;
+                }
+            }
+            else if (currentBrushShape == 3) // Line
+            {
+                // Вычисляем направление линии с учетом угла
+                float angleRad = lineAngle * Mathf.Deg2Rad;
+                Vector3 direction = new Vector3(Mathf.Cos(angleRad), Mathf.Sin(angleRad), 0);
+                Vector3 perpendicular = new Vector3(-direction.y, direction.x, 0);
+                
+                Vector3 lineStart = center - direction * (spawnRadius / 2);
+                Vector3 lineEnd = center + direction * (spawnRadius / 2);
+                
+                // Проверяем расстояние до линии
+                Vector3 toPoint = obj.transform.position - lineStart;
+                float projection = Vector3.Dot(toPoint, direction);
+                
+                if (projection >= 0 && projection <= spawnRadius)
+                {
+                    float perpendicularDistance = Mathf.Abs(Vector3.Dot(toPoint, perpendicular));
+                    if (perpendicularDistance <= 0.3f) // Ширина линии ластика
+                    {
+                        inArea = true;
+                    }
+                }
+            }
+            
+            if (inArea)
+            {
+                objectsToDelete.Add(obj);
+            }
+        }
+        
+        // Удаляем объекты с поддержкой Undo
+        if (currentBrushShape == 0 && objectsToDelete.Count > 0)
+        {
+            // Для одиночного режима удаляем только ближайший объект
+            GameObject closest = objectsToDelete[0];
+            float minDist = Vector3.Distance(closest.transform.position, center);
+            
+            foreach (GameObject obj in objectsToDelete)
+            {
+                float dist = Vector3.Distance(obj.transform.position, center);
+                if (dist < minDist)
+                {
+                    minDist = dist;
+                    closest = obj;
+                }
+            }
+            
+            Undo.DestroyObjectImmediate(closest);
+        }
+        else
+        {
+            // Для остальных режимов удаляем все объекты в области
+            foreach (GameObject obj in objectsToDelete)
+            {
+                Undo.DestroyObjectImmediate(obj);
+            }
+        }
+    }
+
     private System.Collections.Generic.List<Vector3> GetExistingPrefabPositions(Vector3 center, float radius)
     {
         var existingPositions = new System.Collections.Generic.List<Vector3>();
         
-        if (prefabToSpawn == null)
+        if (prefabsToSpawn.Count == 0)
             return existingPositions;
         
-        // Находим все объекты на сцене с таким же именем, как у префаба
+        // Находим все объекты на сцене с такими же именами, как у префабов
         GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-        string prefabName = prefabToSpawn.name;
         
         foreach (GameObject obj in allObjects)
         {
-            // Проверяем, соответствует ли имя объекта имени префаба
-            if (obj.name == prefabName || obj.name.StartsWith(prefabName))
+            // Проверяем, соответствует ли имя объекта имени любого из префабов
+            foreach (GameObject prefab in prefabsToSpawn)
             {
-                // Проверяем, находится ли объект в радиусе действия кисти
-                float distance = Vector3.Distance(obj.transform.position, center);
-                if (distance <= radius * 2f) // Увеличиваем радиус проверки для лучшего эффекта
+                if (prefab != null && (obj.name == prefab.name || obj.name.StartsWith(prefab.name)))
                 {
-                    existingPositions.Add(obj.transform.position);
+                    // Проверяем, находится ли объект в радиусе действия кисти
+                    float distance = Vector3.Distance(obj.transform.position, center);
+                    if (distance <= radius * 2f) // Увеличиваем радиус проверки для лучшего эффекта
+                    {
+                        existingPositions.Add(obj.transform.position);
+                        break; // Выходим из внутреннего цикла, чтобы не добавлять позицию дважды
+                    }
                 }
             }
         }
@@ -416,9 +608,8 @@ public class PrefabBrush : EditorWindow
         return existingPositions;
     }
 
-    /// <summary>
-    /// Настраивает сортировку для 2D вида сверху: объекты с меньшим Y отображаются поверх объектов с большим Y
-    /// </summary>
+
+    // Настраивает сортировку для 2D вида сверху: объекты с меньшим Y отображаются поверх объектов с большим Y
     private void SetupSortingOrder(GameObject obj)
     {
         // Получаем все SpriteRenderer компоненты (включая дочерние объекты)
@@ -449,18 +640,27 @@ public class PrefabBrush : EditorWindow
 
     private void SpawnPrefabs(Vector3 center)
     {
-        if (prefabToSpawn == null)
+        if (prefabsToSpawn.Count == 0 || prefabsToSpawn.TrueForAll(p => p == null))
         {
-            Debug.LogWarning("Please assign a prefab to spawn.");
+            Debug.LogWarning("Please add at least one prefab to spawn.");
             return;
         }
         
-        // Для одиночного объекта просто создаем один объект в центре
+        // Получаем список только непустых префабов
+        List<GameObject> validPrefabs = prefabsToSpawn.FindAll(p => p != null);
+        if (validPrefabs.Count == 0)
+        {
+            Debug.LogWarning("Please assign prefabs in the list.");
+            return;
+        }
+        
+        // Для одиночного объекта просто создаем один случайный объект в центре
         if (currentBrushShape == 0) // Single
         {
-            GameObject newObject = (GameObject)PrefabUtility.InstantiatePrefab(prefabToSpawn);
+            GameObject randomPrefab = validPrefabs[Random.Range(0, validPrefabs.Count)];
+            GameObject newObject = (GameObject)PrefabUtility.InstantiatePrefab(randomPrefab);
             newObject.transform.position = center;
-            newObject.name = prefabToSpawn.name;
+            newObject.name = randomPrefab.name;
             
             // Применяем случайное отзеркаливание по оси Y, если активировано
             if (randomFlipY && Random.value > 0.5f)
@@ -538,10 +738,13 @@ public class PrefabBrush : EditorWindow
             
             randomPosition += center;
             
+            // Добавляем случайную вариацию к минимальному расстоянию (от 0.7 до 1.3 от базового значения)
+            float randomizedMinDistance = minDistance * Random.Range(0.7f, 1.3f);
+            
             bool tooClose = false;
             foreach (var pos in positions)
             {
-                if (Vector3.Distance(pos, randomPosition) < minDistance)
+                if (Vector3.Distance(pos, randomPosition) < randomizedMinDistance)
                 {
                     tooClose = true;
                     break;
@@ -550,9 +753,11 @@ public class PrefabBrush : EditorWindow
             
             if (!tooClose)
             {
-                GameObject newObject = (GameObject)PrefabUtility.InstantiatePrefab(prefabToSpawn);
+                // Выбираем случайный префаб из списка
+                GameObject randomPrefab = validPrefabs[Random.Range(0, validPrefabs.Count)];
+                GameObject newObject = (GameObject)PrefabUtility.InstantiatePrefab(randomPrefab);
                 newObject.transform.position = randomPosition;
-                newObject.name = prefabToSpawn.name;
+                newObject.name = randomPrefab.name;
                 
                 // Применяем случайное отзеркаливание по оси Y, если активировано
                 if (randomFlipY && Random.value > 0.5f)
