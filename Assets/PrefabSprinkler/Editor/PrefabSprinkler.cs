@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 
-public class PrefabBrush : EditorWindow // Главный класс - окно редактора для работы с кистью префабов
+public class PrefabSprinkler : EditorWindow // Главный класс - окно редактора для работы с кистью префабов
 {
     private BrushSettings settings = new BrushSettings(); // Настройки кисти
     private BrushVisualizer visualizer; // Визуализатор кисти на сцене
@@ -12,8 +12,12 @@ public class PrefabBrush : EditorWindow // Главный класс - окно редактора для ра
     private Vector2 scrollPosition; // Позиция скролла для списка префабов
     private GUIContent undoIcon, brushIcon, eraserIcon, cursorIcon, singleIcon, circleIcon, squareIcon, lineIcon; // Иконки UI
 
-    [MenuItem("Tools/PrefabBrush")] // Создает пункт меню
-    public static void ShowWindow() { GetWindow(typeof(PrefabBrush)); }
+    [MenuItem("Tools/PrefabSprinkler")] // Создает пункт меню
+    public static void ShowWindow() 
+    { 
+        var window = GetWindow(typeof(PrefabSprinkler));
+        window.titleContent = new GUIContent("PrefabSprinkler");
+    }
 
     private void OnEnable() // Вызывается при открытии окна
     {
@@ -29,14 +33,14 @@ public class PrefabBrush : EditorWindow // Главный класс - окно редактора для ра
     // Загружает иконки для кнопок
     private void LoadIcons()
     {
-        undoIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_undo.png") as Texture2D, "Undo");
-        brushIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_brush.png") as Texture2D, "Brush Mode");
-        eraserIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_eraser.png") as Texture2D, "Eraser Mode");
-        cursorIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_cursor.png") as Texture2D, "Normal Cursor");
-        singleIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_single.png") as Texture2D, "Single Object");
-        circleIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_circle.png") as Texture2D, "Circle Brush");
-        squareIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_square.png") as Texture2D, "Square Brush");
-        lineIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabBrush/Editor/icon_line.png") as Texture2D, "Line Brush");
+        undoIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabSprinkler/Editor/icon_undo.png") as Texture2D, "Undo");
+        brushIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabSprinkler/Editor/icon_brush.png") as Texture2D, "Brush Mode");
+        eraserIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabSprinkler/Editor/icon_eraser.png") as Texture2D, "Eraser Mode");
+        cursorIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabSprinkler/Editor/icon_cursor.png") as Texture2D, "Normal Cursor");
+        singleIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabSprinkler/Editor/icon_single.png") as Texture2D, "Single Object");
+        circleIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabSprinkler/Editor/icon_circle.png") as Texture2D, "Circle Brush");
+        squareIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabSprinkler/Editor/icon_square.png") as Texture2D, "Square Brush");
+        lineIcon = new GUIContent(EditorGUIUtility.Load("Assets/PrefabSprinkler/Editor/icon_line.png") as Texture2D, "Line Brush");
     }
 
     private void OnGUI() // Отрисовка UI окна редактора
