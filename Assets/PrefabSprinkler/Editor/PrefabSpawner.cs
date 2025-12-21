@@ -100,8 +100,8 @@ public class PrefabSpawner // Класс для создания (спавна) префабов на сцене
         switch (settings.currentBrushShape)
         {
             case 1: // Circle (Круг)
-                randomPosition = Random.insideUnitSphere * settings.spawnRadius;
-                randomPosition.z = 0;
+                Vector2 randomCircle = Random.insideUnitCircle * settings.spawnRadius;
+                randomPosition = new Vector3(randomCircle.x, randomCircle.y, 0);
                 break;
                 
             case 2: // Square (Квадрат)
